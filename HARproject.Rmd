@@ -1,0 +1,71 @@
+---
+title: "Weight Lifting Exercises Prediction"
+output: html_document
+---
+## Background  
+Using devices such as Jawbone Up, Nike FuelBand, and Fitbit it is now possible to collect a large amount of data about personal activity relatively inexpensively. These type of devices are part of the quantified self movement – a group of enthusiasts who take measurements about themselves regularly to improve their health, to find patterns in their behavior, or because they are tech geeks. One thing that people regularly do is quantify how much of a particular activity they do, but they rarely quantify how well they do it. In this project, your goal will be to use data from accelerometers on the belt, forearm, arm, and dumbell of 6 participants. They were asked to perform barbell lifts correctly and incorrectly in 5 different ways. More information is available from the website here: http://groupware.les.inf.puc-rio.br/har (see the section on the Weight Lifting Exercise Dataset). 
+
+## Data  
+We will use the caret package for our analysis. First we'll load the caret library. Next, we download the training dataset and load it into R.  
+
+```{r,message=FALSE}
+library(caret)
+URL <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+download.file(URL,"./data/pml-training.csv",method="curl")
+weight_train <- read.csv("./data/pml-training.csv")
+```
+
+## Methods  
+Next, we will set the seed for the random number generator so that the results are reproducible. Before we start any analysis, we will segment the data into a training and a testing subset. 
+
+```{r,cache=TRUE}
+set.seed(13542)
+
+inTrain <- createDataPartition(y=weight_train$classe,p=0.7,list=FALSE)
+
+training <- weight_train[inTrain,]
+testing <- weight_train[-inTrain,]
+```
+
+There are many variables that don't have data on every row, these are summary variables (max, min, variance) for each group, so we won't want to include them in the model building process. We will remove them along with the first 7 variables which are labeling variables.  
+
+```{r}
+training <- training[,-grep("(^skew)|(^kurt)|(^max_)|(^min_)|(^amp)|(^var_)|(^stddev)|(^avg_)",colnames(training))]
+training <- training[,-c(1:7)]
+```
+
+Using the `train` function from the caret package, we'll fit a model using our training subset and a gradient boosting machine (GBM) model. We will use the default of bootstrapped resampling with 25 repititions.   
+
+```{r,echo=FALSE,cache=TRUE}
+## Added this chunk to speed up HTML knitting. If this chunk is removed and the
+## next chunk is evaluated, the same results will be produced, but the document
+## will take a long time to generate.
+
+load("project_model.RData")
+```
+
+```{r,eval=FALSE}
+modfit <- train(classe~.,data=training,method="gbm",verbose=FALSE)
+```
+
+## Results  
+To get a measure of out-of-sample error, we'll perform cross-validation using the `predict` function on our testing subset.  
+
+```{r,message=FALSE}
+predictions <- predict(modfit,newdata=testing)
+conmtrx <- confusionMatrix(predictions,testing$classe)
+```
+```{r,echo=FALSE}
+conmtrx
+```
+
+The confusion matrix shows that we should expect an out-of-sample accuracy rate of `r round(conmtrx$overall[1],3)` with a 95% confidence interval of `r round(conmtrx$overall[3],3)` to `r round(conmtrx$overall[4],3)`. This is equivalent to an out-of-sample error rate of  `r 1-round(conmtrx$overall[1],3)`.  
+
+```{r,cache=TRUE,echo=FALSE}
+avg_predict_time <- mean(replicate(n = 10 , system.time(predict(modfit,newdata=testing))[3]))
+```
+
+Model generation time is long, but model fitting time is rather quick. 'Classe' prediction of a testing subset of `r length(predictions)` took only `r round(avg_predict_time,3)` seconds.  
+
+## Conclusions    
+Using an out-of-the-box solution for model fitting and cross-validation, we are able to generate a rather accurate gbm model with a fast prediction time and a low out-of-sample error rate. 
